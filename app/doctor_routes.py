@@ -20,20 +20,32 @@ def get_conn():
 
 @doctor_bp.route('/logs')
 def view_logs():
+    from flask import session, redirect, flash
+    # require doctor login
+    if not session.get('doctor_logged_in'):
+        flash('Please login as doctor')
+        return redirect(url_for('doctor.login'))
+    did = session.get('doctor_id')
     conn = get_conn()
-    # include patient name for better display
+    # include patient name and limit logs to this doctor
     logs = conn.execute('''
         SELECT t.*, p.first_name || ' ' || p.last_name AS patient_name
         FROM treatments t
         LEFT JOIN patients p ON p.id = t.patient_id
-        ORDER BY t.id DESC
-    ''').fetchall()
+        WHERE t.doctor_id = ?
+        ORDER BY t.start_date DESC, t.id DESC
+    ''', (did,)).fetchall()
     conn.close()
     return render_template('doctor_logs.html', logs=logs)
 
 
 @doctor_bp.route('/add_treatment', methods=['GET', 'POST'])
 def add_treatment():
+    from flask import session, redirect, flash
+    if not session.get('doctor_logged_in'):
+        flash('Please login as doctor')
+        return redirect(url_for('doctor.login'))
+    did = session.get('doctor_id')
     conn = get_conn()
     if request.method == 'POST':
         pid = request.form['patient_id']
@@ -53,8 +65,14 @@ def add_treatment():
         conn.close()
         return redirect(url_for('doctor.view_logs'))
 
-    # GET: render simple form with patients and doctors
-    patients = conn.execute('SELECT id, first_name, last_name FROM patients').fetchall()
+    # GET: render simple form with patients assigned to this doctor
+    patients = conn.execute('''
+        SELECT DISTINCT p.id, p.first_name, p.last_name
+        FROM patients p
+        LEFT JOIN appointments a ON a.patient_id = p.id
+        WHERE p.doctor = ? OR a.doctor_id = ?
+        ORDER BY p.first_name, p.last_name
+    ''', (did, did)).fetchall()
     doctors = conn.execute('SELECT doctor_id, f_name, l_name FROM doctors').fetchall()
     conn.close()
     return render_template('add_treatment.html', patients=patients, doctors=doctors)
@@ -147,7 +165,13 @@ def my_patients():
         return redirect(url_for('doctor.login'))
     did = session.get('doctor_id')
     conn = get_conn()
-    patients = conn.execute('SELECT id, first_name, last_name, phone FROM patients WHERE doctor = ?', (did,)).fetchall()
+    patients = conn.execute('''
+        SELECT DISTINCT p.id, p.first_name, p.last_name, p.phone
+        FROM patients p
+        LEFT JOIN appointments a ON a.patient_id = p.id
+        WHERE p.doctor = ? OR a.doctor_id = ?
+        ORDER BY p.first_name, p.last_name
+    ''', (did, did)).fetchall()
     conn.close()
     return render_template('doctor_patients.html', patients=patients)
 
@@ -245,6 +269,22 @@ def view_patient(pid):
     if not patient:
         conn.close()
         flash('Patient not found')
+        return redirect(url_for('doctor.my_patients'))
+
+    # ensure this patient is accessible to this doctor: either primary doctor or has an appointment assigned to this doctor
+    accessible = False
+    try:
+        if patient['doctor'] == did:
+            accessible = True
+    except Exception:
+        accessible = False
+    if not accessible:
+        row = conn.execute('SELECT COUNT(1) AS cnt FROM appointments WHERE patient_id = ? AND doctor_id = ?', (pid, did)).fetchone()
+        if row and row['cnt'] > 0:
+            accessible = True
+    if not accessible:
+        conn.close()
+        flash('Not authorized to view this patient')
         return redirect(url_for('doctor.my_patients'))
 
     # handle POST actions: add_symptom, add_prescription
