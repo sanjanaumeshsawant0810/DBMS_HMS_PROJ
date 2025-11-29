@@ -175,6 +175,9 @@ def create_hms_db(db_name="hospital_management.db"):
         created_at TEXT DEFAULT (datetime('now'))
     );
 
+    -- add paid flag and paid_at for item-level payments (migration-friendly)
+    -- Note: If the columns already exist, migration below will skip adding them.
+
     -- -----------------------
     -- Triggers
     -- -----------------------
@@ -317,6 +320,17 @@ def create_hms_db(db_name="hospital_management.db"):
             print("Added 'actions' column to appointments table (migration).")
     except Exception:
         # ignore if appointments table doesn't exist yet
+        pass
+    # --- Migration: ensure 'paid' and 'paid_at' exist on bill_items for item-level payments ---
+    try:
+        bi_cols = [r[1] for r in c.execute("PRAGMA table_info(bill_items);").fetchall()]
+        if 'paid' not in bi_cols:
+            c.execute("ALTER TABLE bill_items ADD COLUMN paid INTEGER DEFAULT 0;")
+            print("Added 'paid' column to bill_items table (migration).")
+        if 'paid_at' not in bi_cols:
+            c.execute("ALTER TABLE bill_items ADD COLUMN paid_at TEXT;")
+            print("Added 'paid_at' column to bill_items table (migration).")
+    except Exception:
         pass
     conn.commit()
     conn.close()

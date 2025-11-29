@@ -1,0 +1,122 @@
+{% extends 'base.html' %}
+{% block title %}Payment Portal - HMS{% endblock %}
+
+{% block content %}
+<div class="row">
+  <div class="col-md-8 offset-md-2">
+    <h3>Payment Portal</h3>
+    <a class="btn btn-secondary mb-3" href="{{ url_for('admin.bills') }}">⬅ Back to Bills</a>
+
+    <div class="card mb-3">
+      <div class="card-body">
+        <h5 class="card-title">Patient(s)</h5>
+        <ul>
+          {% for pid, p in patients.items() %}
+            <li>{{ p.name }} (ID: {{ pid }})</li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+
+    <form method="post" action="{{ url_for('admin.payments_process') }}">
+      <h5>Selected Treatments</h5>
+      <table class="table">
+        <thead>
+          <tr><th>Bill ID</th><th>Treatment</th><th>Amount</th></tr>
+        </thead>
+        <tbody>
+          {% set total = 0 %}
+          {% for it in items %}
+          <tr>
+            <td>{{ it.bill_id }}</td>
+            <td>{{ it.description }}</td>
+            <td>${{ it.amount }}</td>
+          </tr>
+          <input type="hidden" name="item_ids" value="{{ it.id }}">
+          {% set total = total + (it.amount or 0) %}
+          {% endfor %}
+        </tbody>
+      </table>
+
+      <div class="mb-3">
+        <strong>Total: ${{ '%.2f'|format(total) }}</strong>
+      </div>
+
+      <hr>
+      <h5>Payment Method</h5>
+      <div class="mb-3">
+        <div class="form-check">
+          <input class="form-check-input" type="radio" name="payment_method" id="pm_card_credit" value="credit" checked>
+          <label class="form-check-label" for="pm_card_credit">Credit Card</label>
+        </div>
+        <div class="form-check">
+          <input class="form-check-input" type="radio" name="payment_method" id="pm_card_debit" value="debit">
+          <label class="form-check-label" for="pm_card_debit">Debit Card</label>
+        </div>
+        <div class="form-check">
+          <input class="form-check-input" type="radio" name="payment_method" id="pm_cash" value="cash">
+          <label class="form-check-label" for="pm_cash">Cash</label>
+        </div>
+        <div class="form-check">
+          <input class="form-check-input" type="radio" name="payment_method" id="pm_insurance" value="insurance">
+          <label class="form-check-label" for="pm_insurance">Insurance</label>
+        </div>
+      </div>
+
+      <div id="cardFields" class="mb-3">
+        <div class="mb-2">
+          <label class="form-label">Cardholder Name</label>
+          <input type="text" name="card_name" class="form-control">
+        </div>
+        <div class="mb-2">
+          <label class="form-label">Card Number</label>
+          <input type="text" name="card_number" class="form-control" inputmode="numeric" maxlength="19">
+        </div>
+        <div class="row">
+          <div class="col-md-6 mb-2">
+            <label class="form-label">Expiry (MM/YY)</label>
+            <input type="text" name="card_expiry" class="form-control" placeholder="MM/YY">
+          </div>
+          <div class="col-md-6 mb-2">
+            <label class="form-label">CVC</label>
+            <input type="text" name="card_cvc" class="form-control" maxlength="4" inputmode="numeric">
+          </div>
+        </div>
+      </div>
+
+      <div id="insuranceFields" class="mb-3" style="display:none;">
+        <label class="form-label">Insurance Provider</label>
+        <input type="text" name="insurance_provider" class="form-control">
+        <label class="form-label mt-2">Policy Number</label>
+        <input type="text" name="insurance_policy" class="form-control">
+      </div>
+
+      <button type="submit" class="btn btn-success">Complete Payment</button>
+    </form>
+
+    <script>
+    (function(){
+      const radios = document.querySelectorAll('input[name="payment_method"]');
+      const cardFields = document.getElementById('cardFields');
+      const insuranceFields = document.getElementById('insuranceFields');
+      function updateFields(){
+        const v = document.querySelector('input[name="payment_method"]:checked').value;
+        if(v === 'credit' || v === 'debit'){
+          cardFields.style.display = '';
+          insuranceFields.style.display = 'none';
+        } else if(v === 'insurance'){
+          cardFields.style.display = 'none';
+          insuranceFields.style.display = '';
+        } else {
+          cardFields.style.display = 'none';
+          insuranceFields.style.display = 'none';
+        }
+      }
+      radios.forEach(r => r.addEventListener('change', updateFields));
+      updateFields();
+    })();
+    </script>
+    </form>
+  </div>
+</div>
+{% endblock %}

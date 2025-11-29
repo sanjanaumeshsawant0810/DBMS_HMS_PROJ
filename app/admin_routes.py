@@ -1,6 +1,45 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session
 import sqlite3
 import os
+from datetime import datetime
+
+# runtime migration guard: ensure bill_items has item-level paid columns
+_migrations_checked = False
+
+def ensure_bill_items_columns():
+    """Add 'paid' and 'paid_at' columns to bill_items if they don't exist yet.
+    This runs once per process to avoid SQL errors when selecting these columns.
+    """
+    global _migrations_checked
+    if _migrations_checked:
+        return
+    try:
+        # open a short-lived connection for migration
+        mconn = sqlite3.connect(DATABASE, timeout=30)
+        cur = mconn.cursor()
+        try:
+            cols = [r[1] for r in cur.execute("PRAGMA table_info(bill_items);").fetchall()]
+        except Exception:
+            cols = []
+        if 'paid' not in cols:
+            try:
+                cur.execute("ALTER TABLE bill_items ADD COLUMN paid INTEGER DEFAULT 0;")
+                mconn.commit()
+            except Exception:
+                # ignore if alter fails for any reason
+                pass
+        if 'paid_at' not in cols:
+            try:
+                cur.execute("ALTER TABLE bill_items ADD COLUMN paid_at TEXT;")
+                mconn.commit()
+            except Exception:
+                pass
+    finally:
+        try:
+            mconn.close()
+        except Exception:
+            pass
+        _migrations_checked = True
 
 admin_bp = Blueprint('admin', __name__)
 
@@ -130,16 +169,156 @@ def delete_patient(pid):
 def bills():
     if 'admin' not in session:
         return redirect(url_for('admin.login'))  # <- added blueprint prefix
+    ensure_bill_items_columns()
     conn = get_db_connection()
     bills = conn.execute('''
-        SELECT b.id, p.first_name || " " || p.last_name AS patient_name,
-               b.total_amount, b.paid, b.created_at
+        SELECT b.id,
+               p.id AS patient_id,
+               p.first_name || ' ' || p.last_name AS patient_name,
+               b.total_amount,
+               b.paid,
+               b.paid_at,
+               b.created_at,
+               COALESCE(GROUP_CONCAT(CASE WHEN bi.item_type = 'treatment' THEN bi.description END, '; '), '') AS treatments
         FROM bills b
         JOIN patients p ON p.id = b.patient_id
+        LEFT JOIN bill_items bi ON bi.bill_id = b.id
+        GROUP BY b.id
         ORDER BY b.created_at DESC
     ''').fetchall()
+    # fetch treatment items per bill so template can provide a selectable list
+    bill_ids = [str(row['id']) for row in bills]
+    bill_items_map = {}
+    if bill_ids:
+        q = f"SELECT id, bill_id, item_type, description, amount, paid FROM bill_items WHERE bill_id IN ({','.join(bill_ids)}) AND item_type = 'treatment' ORDER BY created_at DESC"
+        items = conn.execute(q).fetchall()
+        for it in items:
+            bill_items_map.setdefault(it['bill_id'], []).append(dict(id=it['id'], description=it['description'], amount=it['amount'], paid=it['paid']))
     conn.close()
-    return render_template('bills.html', bills=bills)
+    return render_template('bills.html', bills=bills, bill_items_map=bill_items_map)
+
+
+@admin_bp.route('/payments', methods=['POST'])
+def payments():
+    if 'admin' not in session:
+        return redirect(url_for('admin.login'))
+    ensure_bill_items_columns()
+    # expected form data: selected_bill (multiple) and for each bill a selected_treatment_<billid>
+    selected = request.form.getlist('selected_bill')
+    if not selected:
+        flash('No bills selected for payment.', 'warning')
+        return redirect(url_for('admin.bills'))
+
+    # collect selected treatment item ids and associated bill/patient info
+    conn = get_db_connection()
+    item_ids = []
+    bills_info = {}
+    patient_ids = set()
+    for bid in selected:
+        sel_name = f'selected_treatment_{bid}'
+        # support multiple selections per bill
+        item_vals = request.form.getlist(sel_name)
+        for item_id in item_vals:
+            if not item_id:
+                continue
+            try:
+                iid = int(item_id)
+            except Exception:
+                continue
+            # skip items already paid
+            paid_row = conn.execute('SELECT paid FROM bill_items WHERE id = ?', (iid,)).fetchone()
+            if paid_row and paid_row['paid']:
+                # ignore already-paid items
+                continue
+            item_ids.append(iid)
+            row = conn.execute('SELECT bill_id FROM bill_items WHERE id = ?', (iid,)).fetchone()
+            if row:
+                b_id = row['bill_id']
+                b = conn.execute('SELECT id, patient_id, total_amount, paid FROM bills WHERE id = ?', (b_id,)).fetchone()
+                if b:
+                    bills_info.setdefault(b_id, dict(id=b['id'], patient_id=b['patient_id'], total_amount=b['total_amount'], paid=b['paid']))
+                    patient_ids.add(b['patient_id'])
+
+    if not item_ids:
+        flash('No treatment items selected for payment.', 'warning')
+        conn.close()
+        return redirect(url_for('admin.bills'))
+
+    # fetch item details
+    placeholders = ','.join('?' for _ in item_ids)
+    items = conn.execute(f'SELECT id, bill_id, description, amount FROM bill_items WHERE id IN ({placeholders})', item_ids).fetchall()
+    items = [dict(id=i['id'], bill_id=i['bill_id'], description=i['description'], amount=i['amount']) for i in items]
+    # determine patient(s)
+    patients = {}
+    for b in bills_info.values():
+        p = conn.execute('SELECT id, first_name, last_name FROM patients WHERE id = ?', (b['patient_id'],)).fetchone()
+        if p:
+            patients[b['patient_id']] = dict(id=p['id'], name=f"{p['first_name']} {p['last_name']}")
+
+    conn.close()
+
+    return render_template('payment_portal.html', items=items, bills_info=bills_info, patients=patients, patient_ids=list(patient_ids))
+
+
+@admin_bp.route('/payments/process', methods=['POST'])
+def payments_process():
+    if 'admin' not in session:
+        return redirect(url_for('admin.login'))
+    ensure_bill_items_columns()
+    # expects 'item_ids' as multiple values
+    item_ids = request.form.getlist('item_ids')
+    payment_method = request.form.get('payment_method') or 'unknown'
+    # normalize to ints
+    try:
+        item_ids = [int(x) for x in item_ids]
+    except Exception:
+        item_ids = []
+    if not item_ids:
+        flash('No items to process.', 'warning')
+        return redirect(url_for('admin.bills'))
+
+    conn = get_db_connection()
+    # mark each selected item as paid and set paid_at
+    placeholders = ','.join('?' for _ in item_ids)
+    items = conn.execute(f'SELECT id, bill_id, amount FROM bill_items WHERE id IN ({placeholders})', item_ids).fetchall()
+    now = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
+    paid_bill_ids = set()
+    for it in items:
+        conn.execute('UPDATE bill_items SET paid = 1, paid_at = ? WHERE id = ? AND (paid IS NULL OR paid = 0)', (now, it['id']))
+        paid_bill_ids.add(it['bill_id'])
+
+    # For each affected bill, check if all items are paid; if so, mark bill as paid and set paid_at
+    for bid in paid_bill_ids:
+        row = conn.execute('SELECT SUM(CASE WHEN paid = 0 OR paid IS NULL THEN 1 ELSE 0 END) AS unpaid_count FROM bill_items WHERE bill_id = ?', (bid,)).fetchone()
+        unpaid = row['unpaid_count'] if row else 0
+        if unpaid == 0:
+            conn.execute('UPDATE bills SET paid = 1, paid_at = ? WHERE id = ?', (now, bid))
+
+    conn.commit()
+    conn.close()
+    flash(f'Payment processed ({payment_method}) for selected items. Item-level payment recorded.', 'success')
+    return redirect(url_for('admin.bills'))
+
+
+
+@admin_bp.route('/bills/mark_paid/<int:bid>', methods=['POST'])
+def mark_bill_paid(bid):
+    if 'admin' not in session:
+        return redirect(url_for('admin.login'))
+    ensure_bill_items_columns()
+    conn = get_db_connection()
+    row = conn.execute('SELECT paid FROM bills WHERE id = ?', (bid,)).fetchone()
+    if not row:
+        conn.close()
+        return ('Bill not found', 404)
+    if row['paid']:
+        conn.close()
+        return ('Already paid', 400)
+    now = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
+    conn.execute('UPDATE bills SET paid = 1, paid_at = ? WHERE id = ?', (now, bid))
+    conn.commit()
+    conn.close()
+    return ('', 204)
 
 
 # --------------------------

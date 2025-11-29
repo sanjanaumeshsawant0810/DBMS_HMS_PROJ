@@ -6,30 +6,170 @@
   <div class="col-md-10 offset-md-1">
     <h3>Bills Overview</h3>
     <a class="btn btn-secondary mb-3" href="{{ url_for('admin.dashboard') }}">⬅ Back</a>
-    <div class="table-responsive">
-      <table class="table table-striped">
-        <thead>
-          <tr>
-            <th>ID</th>
-            <th>Patient</th>
-            <th>Amount</th>
-            <th>Paid</th>
-            <th>Date</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for b in bills %}
-          <tr>
-            <td>{{ b.id }}</td>
-            <td>{{ b.patient_name }}</td>
-            <td>${{ b.total_amount }}</td>
-            <td>{{ 'Yes' if b.paid else 'No' }}</td>
-            <td>{{ b.created_at }}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+    <form id="billsForm" method="post" action="{{ url_for('admin.payments') }}">
+      <div class="mb-3">
+        <button type="button" id="paymentBtn" class="btn btn-primary">Payment</button>
+      </div>
+      <div class="table-responsive">
+        <table class="table table-striped">
+          <thead>
+            <tr>
+              <th></th>
+              <th>Patient ID</th>
+              <th>Patient</th>
+              <th>Select Treatment(s)</th>
+              <th>Amount</th>
+              <th>Paid</th>
+              <th>Doctor's Notes</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for b in bills %}
+            <tr>
+              <td>
+                <input type="checkbox" name="selected_bill" value="{{ b.id }}" class="select-bill" data-patient="{{ b.patient_id }}">
+              </td>
+              <td>{{ b.patient_id }}</td>
+              <td>{{ b.patient_name }}</td>
+              <td>
+                <select name="selected_treatment_{{ b.id }}" class="form-select form-select-sm" multiple>
+                  {% for it in (bill_items_map.get(b.id) or []) %}
+                  <option value="{{ it.id }}" {% if it.paid %}disabled{% endif %}>{{ it.description }} ({{ it.amount }}){% if it.paid %} — PAID{% endif %}</option>
+                  {% endfor %}
+                </select>
+                <small class="text-muted">(hold Ctrl/Cmd to select multiple)</small>
+              </td>
+              <td>${{ b.total_amount }}</td>
+              <td>
+                <div class="form-check form-switch">
+                  <input class="form-check-input paid-toggle" type="checkbox" id="paidSwitch{{ b.id }}" data-bid="{{ b.id }}" {% if b.paid %}checked disabled{% endif %}>
+                </div>
+              </td>
+              <td>{{ b.paid_at or b.created_at }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </form>
+
+    <!-- Multi-patient confirmation modal -->
+    <div class="modal fade" id="multiPatientModal" tabindex="-1" role="dialog" aria-labelledby="multiPatientModalLabel" aria-hidden="true">
+      <div class="modal-dialog" role="document">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="multiPatientModalLabel">Multiple Patients Selected</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            You have selected items belonging to multiple patients. Did you mean to select multiple patients for a combined payment?
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" id="multiCancel" data-bs-dismiss="modal">No</button>
+            <button type="button" class="btn btn-primary" id="multiConfirm">Yes</button>
+          </div>
+        </div>
+      </div>
     </div>
+
+    <script>
+    (function(){
+      try {
+        // Payment button logic: gather selected bills and if multiple patient ids show modal
+        const paymentBtn = document.getElementById('paymentBtn');
+        const billsForm = document.getElementById('billsForm');
+        let multiModal = null;
+        try {
+          if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+            multiModal = new bootstrap.Modal(document.getElementById('multiPatientModal'));
+          }
+        } catch(e) {
+          multiModal = null;
+        }
+
+        function gatherSelection(){
+          const checks = document.querySelectorAll('.select-bill:checked');
+          const selected = [];
+          const patientSet = new Set();
+          checks.forEach(c => {
+            selected.push(c.value);
+            patientSet.add(c.dataset.patient);
+          });
+          return {selected, patientIds: Array.from(patientSet)};
+        }
+
+        function showMultiConfirm(callback){
+          if(multiModal){
+            // show bootstrap modal and wire confirm button
+            const confirmBtn = document.getElementById('multiConfirm');
+            const onConfirm = function(){
+              confirmBtn.removeEventListener('click', onConfirm);
+              callback(true);
+            };
+            confirmBtn.addEventListener('click', onConfirm);
+            multiModal.show();
+          } else {
+            // fallback to native confirm
+            const ok = window.confirm('You selected items for multiple patients. Proceed?');
+            callback(ok);
+          }
+        }
+
+        paymentBtn.addEventListener('click', function(e){
+          const {selected, patientIds} = gatherSelection();
+          if(selected.length === 0){
+            alert('Please select at least one bill and choose its treatment before proceeding to payment.');
+            return;
+          }
+          // Ensure each selected bill has at least one treatment selected
+          for(const bid of selected){
+            const sel = document.querySelector(`[name="selected_treatment_${bid}"]`);
+            if(!sel || (sel.selectedOptions && sel.selectedOptions.length === 0)){
+              alert('Please choose at least one treatment for each selected bill before proceeding.');
+              return;
+            }
+          }
+
+          if(patientIds.length > 1){
+            // show modal or confirm fallback
+            showMultiConfirm(function(ok){
+              if(ok){ billsForm.submit(); }
+            });
+          } else {
+            billsForm.submit();
+          }
+        });
+
+        // if using bootstrap modal, ensure multiCancel hides modal
+        const multiCancel = document.getElementById('multiCancel');
+        if(multiCancel && multiModal){
+          multiCancel.addEventListener('click', function(){ multiModal.hide(); });
+        }
+
+        // Paid toggle: send request to mark bill paid when switch is turned on for unpaid bills
+        document.querySelectorAll('.paid-toggle').forEach(function(el){
+          el.addEventListener('change', function(){
+            const bid = this.dataset.bid;
+            if(this.checked){
+              // call mark paid
+              fetch(`{{ url_for('admin.mark_bill_paid', bid=0) }}`.replace('/0', '/' + bid), {method:'POST'})
+                .then(r => {
+                  if(r.status === 204){
+                    // reload page to update state
+                    location.reload();
+                  } else {
+                    r.text().then(t=>alert('Could not mark as paid: '+t));
+                  }
+                }).catch(err=>alert('Request failed: '+err));
+            }
+          });
+        });
+      } catch(err){
+        // prevent JS errors from blocking the page
+        console.error('bills page script error:', err);
+      }
+    })();
+    </script>
   </div>
 </div>
 {% endblock %}
