@@ -19,7 +19,6 @@
               <th>Patient</th>
               <th>Select Treatment(s)</th>
               <th>Amount</th>
-              <th>Paid</th>
               <th>Doctor's Notes</th>
             </tr>
           </thead>
@@ -40,11 +39,6 @@
                 <small class="text-muted">(hold Ctrl/Cmd to select multiple)</small>
               </td>
               <td>${{ b.total_amount }}</td>
-              <td>
-                <div class="form-check form-switch">
-                  <input class="form-check-input paid-toggle" type="checkbox" id="paidSwitch{{ b.id }}" data-bid="{{ b.id }}" {% if b.paid %}checked disabled{% endif %}>
-                </div>
-              </td>
               <td>{{ b.paid_at or b.created_at }}</td>
             </tr>
             {% endfor %}

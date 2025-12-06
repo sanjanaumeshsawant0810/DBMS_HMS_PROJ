@@ -4,9 +4,9 @@
 {% block content %}
 <div class="row">
     <div class="col-md-10 offset-md-1">
-        <div class="d-flex justify-content-between align-items-center mb-3">
+        <a class="btn btn-outline-secondary mb-3" href="{{ url_for('doctor.my_patients') }}">⬅ Back to My Patients</a>
+        <div class="mb-3">
             <h3 class="mb-0">Treatment Logs</h3>
-            <a class="btn btn-secondary" href="{{ url_for('doctor.dashboard') }}">Dashboard</a>
         </div>
 
         <div class="card">
@@ -21,7 +21,7 @@
                                 <th>Patient Name</th>
                                 <th>Date</th>
                                 <th>Description</th>
-                                <th>Actions</th>
+                                <th>View</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -32,7 +32,7 @@
                                 <td>{{ log['patient_name'] or '' }}</td>
                                 <td>{{ log['start_date'] or log['appointment_datetime'] or '' }}</td>
                                 <td>{{ log['description'] or '' }}</td>
-                                <td><a class="btn btn-sm btn-outline-primary" href="{{ url_for('doctor.edit_treatment', tid=log['id']) }}">Edit</a></td>
+                                <td><button class="btn btn-sm btn-outline-info" data-bs-toggle="modal" data-bs-target="#logModal{{ log['id'] }}">View</button></td>
                             </tr>
                             {% endfor %}
                         </tbody>
@@ -43,6 +43,58 @@
                 {% endif %}
             </div>
         </div>
+
+        <!-- Modals for viewing full description -->
+        {% for log in logs %}
+        <div class="modal fade" id="logModal{{ log['id'] }}" tabindex="-1" aria-labelledby="logModalLabel{{ log['id'] }}" aria-hidden="true">
+            <div class="modal-dialog modal-lg">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="logModalLabel{{ log['id'] }}">Treatment Log #{{ log['id'] }} - {{ log['patient_name'] }}</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <p><strong>Patient ID:</strong> {{ log['patient_id'] }}</p>
+                        <p><strong>Treatment ID:</strong> {{ log['id'] }}</p>
+                        <p><strong>Date:</strong> {{ log['start_date'] or log['appointment_datetime'] or 'N/A' }}</p>
+                        <p><strong>Treatment Description:</strong></p>
+                        <div class="p-3 bg-light rounded mb-4">{{ log['description'] or 'No description provided.' }}</div>
+
+                        <h6 class="mt-4 mb-3">Prescriptions for This Treatment</h6>
+                        {% set matched_prescriptions = [] %}
+                        {% for p in log['prescriptions'] %}
+                            {% if p['treatment_id'] == log['id'] %}
+                                {% set _ = matched_prescriptions.append(p) %}
+                            {% endif %}
+                        {% endfor %}
+                        {% if matched_prescriptions %}
+                        <div class="table-responsive">
+                            <table class="table table-sm table-striped">
+                                <thead><tr><th>Prescription ID</th><th>Created At</th><th>Medication Name</th><th>Dosage</th><th>Notes</th></tr></thead>
+                                <tbody>
+                                    {% for p in matched_prescriptions %}
+                                    <tr>
+                                        <td>{{ p['id'] }}</td>
+                                        <td>{{ p['created_at'] }}</td>
+                                        <td>{{ p['medications'] or '-' }}</td>
+                                        <td>{{ p['dosages'] or '-' }}</td>
+                                        <td>{{ p['notes'] or '-' }}</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        {% else %}
+                        <p class="text-muted">No prescriptions linked to this treatment.</p>
+                        {% endif %}
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
     </div>
 </div>
 {% endblock %}

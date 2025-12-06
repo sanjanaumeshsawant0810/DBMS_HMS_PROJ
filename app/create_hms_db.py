@@ -64,16 +64,6 @@ def create_hms_db(db_name="hospital_management.db"):
     );
 
     -- -----------------------
-    -- medications
-    -- -----------------------
-    CREATE TABLE IF NOT EXISTS medications (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT NOT NULL,
-        description TEXT,
-        price REAL DEFAULT 0
-    );
-
-    -- -----------------------
     -- appointments
     -- -----------------------
     CREATE TABLE IF NOT EXISTS appointments (
@@ -108,6 +98,7 @@ def create_hms_db(db_name="hospital_management.db"):
         id INTEGER PRIMARY KEY AUTOINCREMENT,
     patient_id INTEGER NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
     doctor_id INTEGER REFERENCES doctors(doctor_id) ON DELETE SET NULL,
+    treatment_id INTEGER REFERENCES treatments(id) ON DELETE SET NULL,
     pharmacist_id INTEGER,
         created_at TEXT DEFAULT (datetime('now')),
         notes TEXT
@@ -116,7 +107,7 @@ def create_hms_db(db_name="hospital_management.db"):
     CREATE TABLE IF NOT EXISTS prescription_items (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         prescription_id INTEGER NOT NULL REFERENCES prescriptions(id) ON DELETE CASCADE,
-        medication_id INTEGER NOT NULL REFERENCES medications(id) ON DELETE SET NULL,
+        medication_id INTEGER,
         dosage TEXT,
         quantity INTEGER DEFAULT 1,
         unit_price REAL DEFAULT 0,
@@ -217,7 +208,7 @@ def create_hms_db(db_name="hospital_management.db"):
             (SELECT id FROM bills WHERE patient_id = (SELECT patient_id FROM prescriptions WHERE id = NEW.prescription_id) AND paid = 0 ORDER BY created_at DESC LIMIT 1),
             'medication',
             NEW.id,
-            (SELECT m.name FROM medications m WHERE m.id = NEW.medication_id),
+            COALESCE(NEW.medication_name, 'Medication'),
             COALESCE(NEW.unit_price,0) * COALESCE(NEW.quantity,1),
             datetime('now')
         );
@@ -330,6 +321,33 @@ def create_hms_db(db_name="hospital_management.db"):
         if 'paid_at' not in bi_cols:
             c.execute("ALTER TABLE bill_items ADD COLUMN paid_at TEXT;")
             print("Added 'paid_at' column to bill_items table (migration).")
+    except Exception:
+        pass
+    # --- Migration: ensure 'treatment_id' exists on prescriptions to link to treatments ---
+    try:
+        presc_cols = [r[1] for r in c.execute("PRAGMA table_info(prescriptions);").fetchall()]
+        if 'treatment_id' not in presc_cols:
+            c.execute("ALTER TABLE prescriptions ADD COLUMN treatment_id INTEGER REFERENCES treatments(id) ON DELETE SET NULL;")
+            print("Added 'treatment_id' column to prescriptions table (migration).")
+    except Exception:
+        pass
+    # --- Migration: ensure 'prescription_id' exists on treatments to link to prescriptions (bidirectional) ---
+    try:
+        treat_cols = [r[1] for r in c.execute("PRAGMA table_info(treatments);").fetchall()]
+        if 'prescription_id' not in treat_cols:
+            c.execute("ALTER TABLE treatments ADD COLUMN prescription_id INTEGER REFERENCES prescriptions(id) ON DELETE SET NULL;")
+            print("Added 'prescription_id' column to treatments table (migration).")
+    except Exception:
+        pass
+    # --- Migration: add medication_name and description to prescription_items (eliminate medications table dependency) ---
+    try:
+        pi_cols = [r[1] for r in c.execute("PRAGMA table_info(prescription_items);").fetchall()]
+        if 'medication_name' not in pi_cols:
+            c.execute("ALTER TABLE prescription_items ADD COLUMN medication_name TEXT;")
+            print("Added 'medication_name' column to prescription_items table (migration).")
+        if 'medication_description' not in pi_cols:
+            c.execute("ALTER TABLE prescription_items ADD COLUMN medication_description TEXT;")
+            print("Added 'medication_description' column to prescription_items table (migration).")
     except Exception:
         pass
     conn.commit()

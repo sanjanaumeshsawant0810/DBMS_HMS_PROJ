@@ -7,6 +7,36 @@ doctor_bp = Blueprint('doctor', __name__)
 # DB path relative to this module
 DATABASE = os.path.join(os.path.dirname(__file__), 'hospital_management.db')
 
+_migration_done = False
+
+def ensure_bidirectional_links():
+    """Ensure prescription_id column exists on treatments table and medication fields in prescription_items."""
+    global _migration_done
+    if _migration_done:
+        return
+    try:
+        conn = sqlite3.connect(DATABASE, timeout=30)
+        cols = [r[1] for r in conn.execute("PRAGMA table_info(treatments);").fetchall()]
+        if 'prescription_id' not in cols:
+            conn.execute("ALTER TABLE treatments ADD COLUMN prescription_id INTEGER REFERENCES prescriptions(id) ON DELETE SET NULL;")
+            conn.commit()
+            print("Runtime migration: Added prescription_id to treatments table.")
+        
+        pi_cols = [r[1] for r in conn.execute("PRAGMA table_info(prescription_items);").fetchall()]
+        if 'medication_name' not in pi_cols:
+            conn.execute("ALTER TABLE prescription_items ADD COLUMN medication_name TEXT;")
+            conn.commit()
+            print("Runtime migration: Added medication_name to prescription_items table.")
+        if 'medication_description' not in pi_cols:
+            conn.execute("ALTER TABLE prescription_items ADD COLUMN medication_description TEXT;")
+            conn.commit()
+            print("Runtime migration: Added medication_description to prescription_items table.")
+        
+        conn.close()
+        _migration_done = True
+    except Exception as e:
+        print(f"Migration check failed: {e}")
+
 def get_conn():
     # increase timeout and allow connections from different threads (dev server may use threads)
     conn = sqlite3.connect(DATABASE, timeout=30, check_same_thread=False)
@@ -35,8 +65,32 @@ def view_logs():
         WHERE t.doctor_id = ?
         ORDER BY t.start_date DESC, t.id DESC
     ''', (did,)).fetchall()
+    
+    # Get all treatments and prescriptions for each patient
+    logs_with_details = []
+    for log in logs:
+        pid = log['patient_id']
+        # Get all treatments for this patient
+        treatments = conn.execute('SELECT * FROM treatments WHERE patient_id = ? ORDER BY start_date DESC', (pid,)).fetchall()
+        # Get all prescriptions for this patient with treatment_id
+        prescriptions = conn.execute('''
+            SELECT p.id, p.created_at, p.notes, p.treatment_id,
+                   GROUP_CONCAT(pi.medication_name, ', ') AS medications,
+                   GROUP_CONCAT(pi.dosage, ', ') AS dosages
+            FROM prescriptions p
+            LEFT JOIN prescription_items pi ON pi.prescription_id = p.id
+            WHERE p.patient_id = ?
+            GROUP BY p.id
+            ORDER BY p.created_at DESC
+        ''', (pid,)).fetchall()
+        
+        log_dict = dict(log)
+        log_dict['treatments'] = treatments
+        log_dict['prescriptions'] = prescriptions
+        logs_with_details.append(log_dict)
+    
     conn.close()
-    return render_template('doctor_logs.html', logs=logs)
+    return render_template('doctor_logs.html', logs=logs_with_details)
 
 
 @doctor_bp.route('/add_treatment', methods=['GET', 'POST'])
@@ -263,6 +317,7 @@ def view_patient(pid):
     if not session.get('doctor_logged_in'):
         flash('Please login as doctor')
         return redirect(url_for('doctor.login'))
+    ensure_bidirectional_links()
     did = session.get('doctor_id')
     conn = get_conn()
     patient = conn.execute('SELECT * FROM patients WHERE id = ?', (pid,)).fetchone()
@@ -296,27 +351,43 @@ def view_patient(pid):
             conn.commit()
             flash('Symptom / treatment note added')
         elif action == 'prescribe':
+            # First create the treatment
+            description = request.form.get('description') or ''
+            cur_treatment = conn.execute('INSERT INTO treatments (patient_id, doctor_id, description, start_date) VALUES (?, ?, ?, datetime("now"))', (pid, did, description))
+            treatment_id = cur_treatment.lastrowid
+            
+            # Now create the prescription linked to the treatment
             med_name = request.form.get('medication_name')
             dosage = request.form.get('dosage')
-            qty = int(request.form.get('quantity') or 1)
+            duration = request.form.get('duration') or ''
             unit_price = float(request.form.get('unit_price') or 0)
-            # ensure medication exists (simple upsert)
-            m = conn.execute('SELECT id FROM medications WHERE name = ?', (med_name,)).fetchone()
-            if not m:
-                cur = conn.execute('INSERT INTO medications (name, description, price) VALUES (?, ?, ?)', (med_name, '', unit_price))
-                medication_id = cur.lastrowid
-            else:
-                medication_id = m['id']
+            med_description = request.form.get('medication_description') or ''
 
-            # create prescription
-            cur = conn.execute('INSERT INTO prescriptions (patient_id, doctor_id, notes) VALUES (?, ?, ?)', (pid, did, request.form.get('notes') or ''))
+            # create prescription with duration in notes and link to treatment
+            notes = request.form.get('notes') or ''
+            if duration:
+                notes = f"Duration: {duration}" + (f" | {notes}" if notes else "")
+            cur = conn.execute('INSERT INTO prescriptions (patient_id, doctor_id, notes, treatment_id) VALUES (?, ?, ?, ?)', (pid, did, notes, treatment_id))
             presc_id = cur.lastrowid
-            # add item
-            conn.execute('INSERT INTO prescription_items (prescription_id, medication_id, dosage, quantity, unit_price) VALUES (?, ?, ?, ?, ?)', (presc_id, medication_id, dosage, qty, unit_price))
+            # add item with medication info directly in prescription_items (no medications table)
+            conn.execute('INSERT INTO prescription_items (prescription_id, medication_name, medication_description, dosage, quantity, unit_price) VALUES (?, ?, ?, ?, ?, ?)', (presc_id, med_name, med_description, dosage, 1, unit_price))
+            
+            # Update treatment with prescription_id for bidirectional link
+            conn.execute('UPDATE treatments SET prescription_id = ? WHERE id = ?', (presc_id, treatment_id))
+            
             conn.commit()
-            flash('Prescription created')
+            flash('Treatment and prescription created')
 
     treatments = conn.execute('SELECT * FROM treatments WHERE patient_id = ? ORDER BY start_date DESC', (pid,)).fetchall()
-    prescriptions = conn.execute('SELECT * FROM prescriptions WHERE patient_id = ? ORDER BY created_at DESC', (pid,)).fetchall()
+    prescriptions = conn.execute('''
+        SELECT p.id, p.created_at, p.notes, p.treatment_id,
+               GROUP_CONCAT(pi.medication_name, ', ') AS medications,
+               GROUP_CONCAT(pi.dosage, ', ') AS dosages
+        FROM prescriptions p
+        LEFT JOIN prescription_items pi ON pi.prescription_id = p.id
+        WHERE p.patient_id = ?
+        GROUP BY p.id
+        ORDER BY p.created_at DESC
+    ''', (pid,)).fetchall()
     conn.close()
     return render_template('doctor_patient.html', patient=patient, treatments=treatments, prescriptions=prescriptions)

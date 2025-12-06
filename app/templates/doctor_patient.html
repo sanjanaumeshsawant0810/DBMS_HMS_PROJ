@@ -10,28 +10,47 @@
       <div class="card-body">
         <h4 class="card-title">Patient: {{ patient['first_name'] }} {{ patient['last_name'] }} <small class="text-muted">(ID: {{ patient['id'] }})</small></h4>
 
-        <h5 class="mt-3">Add Symptom / Treatment Note</h5>
-        <form method="POST" class="mb-3">
-          <input type="hidden" name="action" value="add_symptom">
-          <div class="mb-3">
-            <textarea name="description" rows="4" class="form-control" placeholder="Describe symptom or treatment"></textarea>
-          </div>
-          <button class="btn btn-primary" type="submit">Add</button>
-        </form>
-
-        <h5 class="mt-4">Existing Treatments</h5>
+        <h5 class="mt-3">Treatment & Prescription Records</h5>
         {% if treatments %}
         <div class="table-responsive">
           <table class="table table-striped align-middle">
-            <thead class="table-light"><tr><th>ID</th><th>Description</th><th>Date</th><th>Actions</th></tr></thead>
+            <thead class="table-light">
+              <tr>
+                <th>Treatment ID</th>
+                <th>Treatment Description</th>
+                <th>Date</th>
+                <th>Medication</th>
+                <th>Dosage</th>
+                <th>Notes</th>
+              </tr>
+            </thead>
             <tbody>
               {% for t in treatments %}
-              <tr>
-                <td>{{ t['id'] }}</td>
-                <td>{{ t['description'] }}</td>
-                <td>{{ t['start_date'] or t['end_date'] or '' }}</td>
-                <td><a class="btn btn-sm btn-outline-primary" href="{{ url_for('doctor.edit_treatment', tid=t['id']) }}">Edit</a></td>
-              </tr>
+              {% set treatment_prescriptions = [] %}
+              {% for p in prescriptions %}
+                {% if p['treatment_id'] == t['id'] %}
+                  {% set _ = treatment_prescriptions.append(p) %}
+                {% endif %}
+              {% endfor %}
+              {% if treatment_prescriptions %}
+                {% for p in treatment_prescriptions %}
+                <tr>
+                  <td>{{ t['id'] }}</td>
+                  <td>{{ t['description'] }}</td>
+                  <td>{{ t['start_date'] or t['end_date'] or '' }}</td>
+                  <td>{{ p['medications'] or '-' }}</td>
+                  <td>{{ p['dosages'] or '-' }}</td>
+                  <td>{{ p['notes'] or '-' }}</td>
+                </tr>
+                {% endfor %}
+              {% else %}
+                <tr>
+                  <td>{{ t['id'] }}</td>
+                  <td>{{ t['description'] }}</td>
+                  <td>{{ t['start_date'] or t['end_date'] or '' }}</td>
+                  <td colspan="3" class="text-muted">No prescription linked</td>
+                </tr>
+              {% endif %}
               {% endfor %}
             </tbody>
           </table>
@@ -44,21 +63,29 @@
 
     <div class="card mb-4">
       <div class="card-body">
-        <h5>Create Prescription</h5>
+        <h5>Create Prescription and Treatment</h5>
         <form method="POST">
           <input type="hidden" name="action" value="prescribe">
+          <div class="mb-3">
+            <label for="description" class="form-label">Treatment Description</label>
+            <textarea id="description" name="description" rows="3" class="form-control" placeholder="Describe the treatment or diagnosis" required></textarea>
+          </div>
           <div class="row g-2">
-            <div class="col-md-6">
+            <div class="col-md-4">
               <label for="medication_name" class="form-label">Medication name</label>
               <input id="medication_name" name="medication_name" class="form-control" required>
             </div>
-            <div class="col-md-3">
+            <div class="col-md-4">
+              <label for="medication_description" class="form-label">Medication Description</label>
+              <input id="medication_description" name="medication_description" class="form-control" placeholder="e.g., Antibiotic, Pain reliever">
+            </div>
+            <div class="col-md-2">
               <label for="dosage" class="form-label">Dosage</label>
               <input id="dosage" name="dosage" class="form-control">
             </div>
-            <div class="col-md-3">
-              <label for="quantity" class="form-label">Quantity</label>
-              <input id="quantity" name="quantity" class="form-control" value="1">
+            <div class="col-md-2">
+              <label for="duration" class="form-label">Duration</label>
+              <input id="duration" name="duration" class="form-control" placeholder="e.g., 7 days">
             </div>
           </div>
           <div class="row g-2 mt-2">
@@ -67,38 +94,14 @@
               <input id="unit_price" name="unit_price" class="form-control" value="0">
             </div>
             <div class="col-md-9">
-              <label for="notes" class="form-label">Notes</label>
+              <label for="notes" class="form-label">Prescription Notes</label>
               <input id="notes" name="notes" class="form-control">
             </div>
           </div>
           <div class="mt-3">
-            <button class="btn btn-primary" type="submit">Prescribe</button>
+            <button class="btn btn-primary" type="submit">Create Treatment & Prescription</button>
           </div>
         </form>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="card-body">
-        <h5>Existing Prescriptions</h5>
-        {% if prescriptions %}
-        <div class="table-responsive">
-          <table class="table table-striped">
-            <thead><tr><th>ID</th><th>Created At</th><th>Notes</th></tr></thead>
-            <tbody>
-              {% for p in prescriptions %}
-              <tr>
-                <td>{{ p['id'] }}</td>
-                <td>{{ p['created_at'] }}</td>
-                <td>{{ p['notes'] }}</td>
-              </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
-        {% else %}
-          <div class="alert alert-info">No prescriptions found.</div>
-        {% endif %}
       </div>
     </div>
   </div>
