@@ -1,0 +1,158 @@
+{% extends 'base.html' %}
+
+{% block title %}Appointment Calendar - Admin{% endblock %}
+
+{% block content %}
+<div class="fade-in-up">
+  <!-- Navigation Tabs -->
+  <ul class="nav nav-pills mb-4">
+    <li class="nav-item">
+      <a class="nav-link" href="{{ url_for('admin.patients') }}">Patients</a>
+    </li>
+    <li class="nav-item">
+      <a class="nav-link" href="{{ url_for('admin.doctors') }}">Doctors</a>
+    </li>
+    <li class="nav-item">
+      <a class="nav-link active" href="{{ url_for('admin.appointments') }}">Appointments</a>
+    </li>
+    <li class="nav-item">
+      <a class="nav-link" href="{{ url_for('admin.bills') }}">Billing</a>
+    </li>
+  </ul>
+
+  <div class="row mb-4">
+    <div class="col-md-12">
+      <div class="d-flex justify-content-between align-items-center">
+        <div>
+          <h3 class="mb-1">📅 Appointment Calendar</h3>
+          <p class="text-muted mb-0">Visual calendar view of all appointments</p>
+        </div>
+        <div class="btn-group" role="group">
+          <a href="{{ url_for('admin.appointments_calendar') }}" class="btn btn-primary">
+            <i class="bi bi-calendar3"></i> Calendar View
+          </a>
+          <a href="{{ url_for('admin.appointments') }}" class="btn btn-outline-primary">
+            <i class="bi bi-list-ul"></i> List View
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="col-md-12">
+      <div class="card">
+        <div class="card-body">
+          <div id="calendar"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Legend -->
+  <div class="row mt-3">
+    <div class="col-md-12">
+      <div class="card">
+        <div class="card-body">
+          <h6 class="mb-3">Status Legend:</h6>
+          <div class="d-flex gap-4 flex-wrap">
+            <div><span class="badge" style="background: #FF9800;">⏳</span> Pending</div>
+            <div><span class="badge" style="background: #4CAF50;">✓</span> Confirmed</div>
+            <div><span class="badge" style="background: #2196F3;">✓</span> Completed</div>
+            <div><span class="badge" style="background: #F44336;">✗</span> Cancelled</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Event Detail Modal -->
+<div class="modal fade" id="eventModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Appointment Details</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3">
+          <strong>Patient:</strong> <span id="modalPatient"></span>
+        </div>
+        <div class="mb-3">
+          <strong>Doctor:</strong> <span id="modalDoctor"></span>
+        </div>
+        <div class="mb-3">
+          <strong>Date & Time:</strong> <span id="modalDateTime"></span>
+        </div>
+        <div class="mb-3">
+          <strong>Status:</strong> <span id="modalStatus"></span>
+        </div>
+        <div class="mb-3">
+          <strong>Notes:</strong> <span id="modalNotes"></span>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <a id="modalEditLink" href="#" class="btn btn-primary">Edit Appointment</a>
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- FullCalendar CSS -->
+<link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.9/index.global.min.css" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+
+<!-- FullCalendar JS -->
+<script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.9/index.global.min.js"></script>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  const calendarEl = document.getElementById('calendar');
+  const eventModal = new bootstrap.Modal(document.getElementById('eventModal'));
+  
+  const calendar = new FullCalendar.Calendar(calendarEl, {
+    initialView: 'dayGridMonth',
+    headerToolbar: {
+      left: 'prev,next today',
+      center: 'title',
+      right: 'dayGridMonth,timeGridWeek,timeGridDay,listWeek'
+    },
+    events: {{ events|tojson }},
+    eventClick: function(info) {
+      const event = info.event;
+      const props = event.extendedProps;
+      
+      document.getElementById('modalPatient').textContent = props.patient;
+      document.getElementById('modalDoctor').textContent = props.doctor;
+      document.getElementById('modalDateTime').textContent = event.start.toLocaleString();
+      document.getElementById('modalStatus').innerHTML = `<span class="badge bg-${getStatusClass(props.status)}">${props.status.toUpperCase()}</span>`;
+      document.getElementById('modalNotes').textContent = props.notes || 'No notes';
+      document.getElementById('modalEditLink').href = "{{ url_for('admin.appointments') }}#appointment-" + event.id;
+      
+      eventModal.show();
+    },
+    height: 'auto',
+    displayEventTime: true,
+    eventTimeFormat: {
+      hour: '2-digit',
+      minute: '2-digit',
+      meridiem: 'short'
+    }
+  });
+  
+  calendar.render();
+  
+  function getStatusClass(status) {
+    const classes = {
+      'booked': 'warning',
+      'confirmed': 'success',
+      'completed': 'info',
+      'cancelled': 'danger'
+    };
+    return classes[status] || 'secondary';
+  }
+});
+</script>
+{% endblock %}

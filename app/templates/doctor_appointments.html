@@ -7,7 +7,13 @@
   <div class="col-md-10 offset-md-1">
     <div class="d-flex justify-content-between align-items-center mb-3">
       <h3 class="mb-0">My Appointments</h3>
-      <a class="btn btn-secondary" href="{{ url_for('doctor.dashboard') }}">Dashboard</a>
+      <div class="d-flex gap-2">
+        <div class="input-group" style="width: 300px;">
+          <span class="input-group-text bg-white"><i class="bi bi-search"></i></span>
+          <input type="text" id="searchAppointments" class="form-control" placeholder="Search patient, date...">
+        </div>
+        <a class="btn btn-secondary" href="{{ url_for('doctor.dashboard') }}">Dashboard</a>
+      </div>
     </div>
 
     {% if rows %}
@@ -18,7 +24,7 @@
           </thead>
           <tbody>
             {% for r in rows %}
-              <tr>
+              <tr class="appointment-row">
                 <td><a href="{{ url_for('doctor.open_appointment', aid=r['id']) }}">{{ r['id'] }}</a></td>
                 <td>{{ r['patient_name'] }}</td>
                 <td>{{ r['appointment_datetime'] }}</td>
@@ -35,4 +41,24 @@
     {% endif %}
   </div>
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  const searchInput = document.getElementById('searchAppointments');
+  const appointmentRows = document.querySelectorAll('.appointment-row');
+  
+  if (searchInput) {
+    searchInput.addEventListener('input', function() {
+      const searchTerm = this.value.toLowerCase();
+      
+      appointmentRows.forEach(row => {
+        const rowText = row.textContent.toLowerCase();
+        row.style.display = rowText.includes(searchTerm) ? '' : 'none';
+      });
+    });
+  }
+});
+</script>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
 {% endblock %}

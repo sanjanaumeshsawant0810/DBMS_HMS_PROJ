@@ -93,14 +93,71 @@ def dashboard():
         return redirect(url_for('admin.login'))  # <- added blueprint prefix
 
     conn = get_db_connection()
+    
+    # Basic stats
     stats = {
         'patients': conn.execute('SELECT COUNT(*) FROM patients').fetchone()[0],
         'doctors': conn.execute("SELECT COUNT(*) FROM doctors").fetchone()[0],
-        'rooms': conn.execute('SELECT COUNT(*) FROM rooms').fetchone()[0],
         'bills': conn.execute('SELECT COUNT(*) FROM bills').fetchone()[0],
+        'appointments': conn.execute('SELECT COUNT(*) FROM appointments').fetchone()[0],
     }
+    
+    # Appointment status breakdown
+    appointment_stats = conn.execute('''
+        SELECT status, COUNT(*) as count 
+        FROM appointments 
+        GROUP BY status
+    ''').fetchall()
+    
+    # Recent appointments (last 7 days)
+    recent_appointments = conn.execute('''
+        SELECT DATE(appointment_datetime) as date, COUNT(*) as count
+        FROM appointments
+        WHERE appointment_datetime >= date('now', '-7 days')
+        GROUP BY DATE(appointment_datetime)
+        ORDER BY date
+    ''').fetchall()
+    
+    # Revenue stats
+    revenue_stats = conn.execute('''
+        SELECT 
+            SUM(CASE WHEN paid = 1 THEN total_amount ELSE 0 END) as paid_amount,
+            SUM(CASE WHEN paid = 0 THEN total_amount ELSE 0 END) as pending_amount,
+            SUM(total_amount) as total_amount
+        FROM bills
+    ''').fetchone()
+    
+    # Doctor workload (appointment count per doctor)
+    doctor_workload = conn.execute('''
+        SELECT 
+            d.f_name || ' ' || d.l_name as doctor_name,
+            COUNT(a.id) as appointment_count
+        FROM doctors d
+        LEFT JOIN appointments a ON d.doctor_id = a.doctor_id
+        GROUP BY d.doctor_id
+        ORDER BY appointment_count DESC
+        LIMIT 5
+    ''').fetchall()
+    
     conn.close()
-    return render_template('dashboard.html', stats=stats)  # <- corrected template name
+    
+    # Debug logging
+    print(f"📊 Dashboard Data:")
+    print(f"   Stats: {stats}")
+    print(f"   Appointment Stats: {len(appointment_stats)} rows")
+    print(f"   Recent Appointments: {len(recent_appointments)} rows")
+    print(f"   Doctor Workload: {len(doctor_workload)} rows")
+    if len(recent_appointments) > 0:
+        print(f"   Sample recent: {dict(recent_appointments[0])}")
+    if len(appointment_stats) > 0:
+        print(f"   Sample stats: {dict(appointment_stats[0])}")
+    
+    return render_template('dashboard.html', 
+                         stats=stats,
+                         appointment_stats=appointment_stats,
+                         recent_appointments=recent_appointments,
+                         revenue_stats=revenue_stats,
+                         doctor_workload=doctor_workload)
 
 
 # --------------------------
@@ -360,6 +417,51 @@ def add_doctor():
     return render_template('add_doctors.html')
 
 
+@admin_bp.route('/doctors/edit/<int:did>', methods=['GET', 'POST'])
+def edit_doctor(did):
+    if 'admin' not in session:
+        return redirect(url_for('admin.login'))
+    
+    conn = get_db_connection()
+    
+    if request.method == 'POST':
+        f_name = request.form.get('f_name')
+        l_name = request.form.get('l_name')
+        specialization = request.form.get('specialization')
+        contact = request.form.get('contact')
+        department = request.form.get('department')
+        availability = request.form.get('availability')
+        password = request.form.get('password')
+        
+        if password:
+            # Update with new password
+            conn.execute(
+                "UPDATE doctors SET f_name=?, l_name=?, specialization=?, contact=?, department=?, availability=?, password=? WHERE doctor_id=?",
+                (f_name, l_name, specialization, contact, department, availability, password, did)
+            )
+        else:
+            # Update without changing password
+            conn.execute(
+                "UPDATE doctors SET f_name=?, l_name=?, specialization=?, contact=?, department=?, availability=? WHERE doctor_id=?",
+                (f_name, l_name, specialization, contact, department, availability, did)
+            )
+        
+        conn.commit()
+        conn.close()
+        flash('Doctor details updated successfully!', 'success')
+        return redirect(url_for('admin.doctors'))
+    
+    # GET request - fetch doctor details
+    doctor = conn.execute("SELECT * FROM doctors WHERE doctor_id = ?", (did,)).fetchone()
+    conn.close()
+    
+    if not doctor:
+        flash('Doctor not found!', 'error')
+        return redirect(url_for('admin.doctors'))
+    
+    return render_template('edit_doctor.html', doctor=doctor)
+
+
 @admin_bp.route('/doctors/delete/<int:did>')
 def delete_doctor(did):
     if 'admin' not in session:
@@ -490,18 +592,66 @@ def appointments():
     if 'admin' not in session:
         return redirect(url_for('admin.login'))
     conn = get_db_connection()
-    # show appointments that are booked (pending) so admin can assign a doctor and confirm
+    # show ALL appointments so admin can see everything
     rows = conn.execute('''
         SELECT a.*, p.first_name || ' ' || p.last_name AS patient_name, d.doctor_id, d.f_name || ' ' || d.l_name AS doctor_name
         FROM appointments a
         JOIN patients p ON p.id = a.patient_id
         LEFT JOIN doctors d ON d.doctor_id = a.doctor_id
-        WHERE a.status = 'booked'
-        ORDER BY a.appointment_datetime ASC
+        ORDER BY a.appointment_datetime DESC
     ''').fetchall()
     doctors = conn.execute('SELECT doctor_id, f_name, l_name FROM doctors ORDER BY f_name, l_name').fetchall()
     conn.close()
     return render_template('admin_appointments.html', rows=rows, doctors=doctors)
+
+
+@admin_bp.route('/appointments/calendar')
+def appointments_calendar():
+    if 'admin' not in session:
+        return redirect(url_for('admin.login'))
+    conn = get_db_connection()
+    # Get all appointments for calendar
+    appointments = conn.execute('''
+        SELECT 
+            a.id,
+            a.appointment_datetime,
+            a.status,
+            a.notes,
+            p.first_name || ' ' || p.last_name AS patient_name,
+            d.f_name || ' ' || d.l_name AS doctor_name
+        FROM appointments a
+        JOIN patients p ON p.id = a.patient_id
+        LEFT JOIN doctors d ON d.doctor_id = a.doctor_id
+        ORDER BY a.appointment_datetime
+    ''').fetchall()
+    
+    doctors = conn.execute('SELECT doctor_id, f_name, l_name FROM doctors ORDER BY f_name, l_name').fetchall()
+    conn.close()
+    
+    # Convert to list of dicts for JSON serialization
+    events = []
+    for appt in appointments:
+        color = {
+            'booked': '#FF9800',
+            'confirmed': '#4CAF50',
+            'cancelled': '#F44336',
+            'completed': '#2196F3'
+        }.get(appt['status'], '#999999')
+        
+        events.append({
+            'id': appt['id'],
+            'title': f"{appt['patient_name']} - {appt['doctor_name'] or 'No Doctor'}",
+            'start': appt['appointment_datetime'],
+            'color': color,
+            'extendedProps': {
+                'patient': appt['patient_name'],
+                'doctor': appt['doctor_name'] or 'Not assigned',
+                'status': appt['status'],
+                'notes': appt['notes'] or ''
+            }
+        })
+    
+    return render_template('admin_appointments_calendar.html', events=events, doctors=doctors)
 
 
 @admin_bp.route('/appointments/confirm/<int:aid>', methods=['POST'])

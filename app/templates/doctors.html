@@ -1,13 +1,40 @@
 {% extends 'base.html' %}
 {% block title %}Doctors List - HMS{% endblock %}
 {% block content %}
+<!-- Navigation Tabs -->
+<ul class="nav nav-pills mb-4">
+  <li class="nav-item">
+    <a class="nav-link" href="{{ url_for('admin.patients') }}">Patients</a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link active" href="{{ url_for('admin.doctors') }}">Doctors</a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" href="{{ url_for('admin.appointments') }}">Appointments</a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" href="{{ url_for('admin.bills') }}">Billing</a>
+  </li>
+</ul>
+
 <div class="d-flex justify-content-between align-items-center mb-4">
-    <h2 class="m-0">Doctors</h2>
-    <a class="btn btn-primary" href="{{ url_for('admin.add_doctor') }}">Add New Doctor</a>
+    <div>
+      <h2 class="mb-1">👨‍⚕️ Doctor Management</h2>
+      <p class="text-muted mb-0">View and manage all registered doctors</p>
+    </div>
+    <div class="d-flex gap-2">
+      <div class="input-group" style="width: 300px;">
+        <span class="input-group-text bg-white"><i class="bi bi-search"></i></span>
+        <input type="text" id="searchDoctors" class="form-control" placeholder="Search doctors...">
+      </div>
+      <a class="btn btn-primary" href="{{ url_for('admin.add_doctor') }}">
+        <i class="bi bi-person-plus-fill me-2"></i>Add New Doctor
+      </a>
+    </div>
 </div>
 <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
     {% for doc in doctors %}
-    <div class="col">
+    <div class="col doctor-card">
         <div class="card h-100 shadow-sm">
             <div class="text-center pt-4">
             <img src="{{ url_for('static', filename='icons/doc1.webp') }}" alt="Doctor Photo" class="mb-2 doctor-photo">
@@ -22,7 +49,10 @@
             </div>
             <div class="card-footer bg-white border-0 d-flex justify-content-between">
                 <a class="btn btn-outline-primary btn-sm" href="{{ url_for('doctor.doctor_profile', did=doc['doctor_id']) }}">Profile</a>
-                <a class="btn btn-outline-danger btn-sm" href="{{ url_for('admin.delete_doctor', did=doc['doctor_id']) }}" onclick="return confirm('Are you sure you want to delete this doctor?');">Delete</a>
+                <div class="btn-group" role="group">
+                    <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('admin.edit_doctor', did=doc['doctor_id']) }}" title="Edit"><i class="bi bi-pencil-square"></i></a>
+                    <a class="btn btn-outline-danger btn-sm" href="{{ url_for('admin.delete_doctor', did=doc['doctor_id']) }}" onclick="return confirm('Are you sure you want to delete this doctor?');" title="Delete"><i class="bi bi-trash"></i></a>
+                </div>
             </div>
         </div>
     </div>
@@ -31,4 +61,24 @@
 <div class="mt-4">
     <a class="btn btn-secondary" href="{{ url_for('admin.dashboard') }}">Back to Dashboard</a>
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  const searchInput = document.getElementById('searchDoctors');
+  const doctorCards = document.querySelectorAll('.doctor-card');
+  
+  if (searchInput) {
+    searchInput.addEventListener('input', function() {
+      const searchTerm = this.value.toLowerCase();
+      
+      doctorCards.forEach(card => {
+        const cardText = card.textContent.toLowerCase();
+        card.style.display = cardText.includes(searchTerm) ? '' : 'none';
+      });
+    });
+  }
+});
+</script>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
 {% endblock %}

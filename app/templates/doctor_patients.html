@@ -15,13 +15,14 @@
         <div class="table-responsive">
           <table class="table table-hover align-middle">
             <thead class="table-light">
-              <tr><th>ID</th><th>Name</th><th>Phone</th><th>Actions</th></tr>
+              <tr><th>ID</th><th>Name</th><th>DOB</th><th>Phone</th><th>Actions</th></tr>
             </thead>
             <tbody>
               {% for p in patients %}
               <tr>
                 <td>{{ p['id'] }}</td>
                 <td>{{ p['first_name'] }} {{ p['last_name'] }}</td>
+                <td>{{ p['dob'] if p['dob'] else '-' }}</td>
                 <td>{{ p['phone'] }}</td>
                 <td><a class="btn btn-sm btn-primary" href="{{ url_for('doctor.view_patient', pid=p['id']) }}">Open</a></td>
               </tr>

@@ -220,7 +220,7 @@ def my_patients():
     did = session.get('doctor_id')
     conn = get_conn()
     patients = conn.execute('''
-        SELECT DISTINCT p.id, p.first_name, p.last_name, p.phone
+        SELECT DISTINCT p.id, p.first_name, p.last_name, p.dob, p.phone
         FROM patients p
         LEFT JOIN appointments a ON a.patient_id = p.id
         WHERE p.doctor = ? OR a.doctor_id = ?

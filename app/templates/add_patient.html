@@ -1,33 +1,119 @@
 {% extends 'base.html' %}
 {% block title %}Patients - Admin{% endblock %}
 {% block content %}
-<h2>Patients</h2>
-<a class="btn btn-primary" href="{{ url_for('admin.add_patient') }}">Add New Patient</a>
-<table class="table mt-3">
-  <thead>
-    <tr>
-      <th>ID</th>
-      <th>Name</th>
-      <th>Phone</th>
-      <th>Address</th>
-      <th>Doctor</th>
-      <th>Actions</th>
-    </tr>
-  </thead>
-  <tbody>
-    {% for p in patients %}
-    <tr>
-      <td>{{ p.id }}</td>
-      <td>{{ p.first_name }} {{ p.last_name }}</td>
-      <td>{{ p.phone }}</td>
-      <td>{{ p.address }}</td>
-      <td>{% if p['doctor_name'] %}Dr. {{ p['doctor_name'] }}{% else %}-{% endif %}</td>
-      <td>
-        <a class="btn btn-sm btn-outline-primary" href="{{ url_for('admin.update_patient', pid=p.id) }}">Edit</a>
-        <a class="btn btn-sm btn-outline-danger" href="{{ url_for('admin.delete_patient', pid=p.id) }}" onclick="return confirm('Delete patient?');">Delete</a>
-      </td>
-    </tr>
-    {% endfor %}
-  </tbody>
-</table>
+<div class="fade-in-up">
+  <!-- Navigation Tabs -->
+  <ul class="nav nav-pills mb-4">
+    <li class="nav-item">
+      <a class="nav-link active" href="{{ url_for('admin.patients') }}">Patients</a>
+    </li>
+    <li class="nav-item">
+      <a class="nav-link" href="{{ url_for('admin.doctors') }}">Doctors</a>
+    </li>
+    <li class="nav-item">
+      <a class="nav-link" href="{{ url_for('admin.appointments') }}">Appointments</a>
+    </li>
+    <li class="nav-item">
+      <a class="nav-link" href="{{ url_for('admin.bills') }}">Billing</a>
+    </li>
+  </ul>
+
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+      <h2 class="mb-1">👥 Patient Management</h2>
+      <p class="text-muted mb-0">View and manage all registered patients</p>
+    </div>
+    <div class="d-flex gap-2">
+      <div class="input-group" style="width: 300px;">
+        <span class="input-group-text bg-white"><i class="bi bi-search"></i></span>
+        <input type="text" id="searchPatients" class="form-control" placeholder="Search patients...">
+      </div>
+      <a class="btn btn-primary" href="{{ url_for('admin.add_patient') }}">
+        <i class="bi bi-person-plus-fill me-2"></i>Add New Patient
+      </a>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-body">
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Name</th>
+              <th>DOB</th>
+              <th>Phone</th>
+              <th>Address</th>
+              <th>Doctor</th>
+              <th class="text-center">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for p in patients %}
+            <tr class="patient-row">
+              <td><span class="badge bg-secondary">{{ p.id }}</span></td>
+              <td>
+                <strong>{{ p.first_name }} {{ p.last_name }}</strong>
+              </td>
+              <td>
+                {% if p.dob %}
+                  <i class="bi bi-calendar3 text-muted me-1"></i>{{ p.dob }}
+                {% else %}
+                  <span class="text-muted">-</span>
+                {% endif %}
+              </td>
+              <td>
+                {% if p.phone %}
+                  <i class="bi bi-telephone text-muted me-1"></i>{{ p.phone }}
+                {% else %}
+                  <span class="text-muted">-</span>
+                {% endif %}
+              </td>
+              <td>{{ p.address if p.address else '-' }}</td>
+              <td>
+                {% if p['doctor_name'] %}
+                  <i class="bi bi-person-badge text-primary me-1"></i>Dr. {{ p['doctor_name'] }}
+                {% else %}
+                  <span class="text-muted">-</span>
+                {% endif %}
+              </td>
+              <td class="text-center">
+                <div class="btn-group" role="group">
+                  <a class="btn btn-sm btn-outline-primary" href="{{ url_for('admin.update_patient', pid=p.id) }}" title="Edit Patient">
+                    <i class="bi bi-pencil-square"></i>
+                  </a>
+                  <a class="btn btn-sm btn-outline-danger" href="{{ url_for('admin.delete_patient', pid=p.id) }}" onclick="return confirm('Are you sure you want to delete this patient?');" title="Delete Patient">
+                    <i class="bi bi-trash"></i>
+                  </a>
+                </div>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  const searchInput = document.getElementById('searchPatients');
+  const patientRows = document.querySelectorAll('.patient-row');
+  
+  if (searchInput) {
+    searchInput.addEventListener('input', function() {
+      const searchTerm = this.value.toLowerCase();
+      
+      patientRows.forEach(row => {
+        const rowText = row.textContent.toLowerCase();
+        row.style.display = rowText.includes(searchTerm) ? '' : 'none';
+      });
+    });
+  }
+});
+</script>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
 {% endblock %}

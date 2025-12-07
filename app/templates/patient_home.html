@@ -26,13 +26,19 @@
     {% if upcoming and upcoming|length > 0 %}
     <div class="card">
       <div class="card-body">
-        <h5 class="card-title">Upcoming Appointments</h5>
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <h5 class="card-title mb-0">Upcoming Appointments</h5>
+          <div class="input-group" style="width: 300px;">
+            <span class="input-group-text bg-white"><i class="bi bi-search"></i></span>
+            <input type="text" id="searchUpcoming" class="form-control" placeholder="Search appointments...">
+          </div>
+        </div>
         <div class="table-responsive">
           <table class="table table-hover align-middle mb-0">
             <thead class="table-light"><tr><th>ID</th><th>Date / Time</th><th>Doctor</th><th>Status</th></tr></thead>
             <tbody>
               {% for a in upcoming %}
-              <tr>
+              <tr class="upcoming-row">
                 <td>{{ a['id'] }}</td>
                 <td>{{ a['appointment_datetime'] or '-' }}</td>
                 <td>{{ a['doctor_name'] or '-' }}</td>
@@ -50,4 +56,25 @@
 
   </div>
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  const searchInput = document.getElementById('searchUpcoming');
+  
+  if (searchInput) {
+    const upcomingRows = document.querySelectorAll('.upcoming-row');
+    
+    searchInput.addEventListener('input', function() {
+      const searchTerm = this.value.toLowerCase();
+      
+      upcomingRows.forEach(row => {
+        const rowText = row.textContent.toLowerCase();
+        row.style.display = rowText.includes(searchTerm) ? '' : 'none';
+      });
+    });
+  }
+});
+</script>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
 {% endblock %}
