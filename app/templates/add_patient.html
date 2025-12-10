@@ -45,7 +45,6 @@
               <th>DOB</th>
               <th>Phone</th>
               <th>Address</th>
-              <th>Doctor</th>
               <th class="text-center">Actions</th>
             </tr>
           </thead>
@@ -57,27 +56,20 @@
                 <strong>{{ p.first_name }} {{ p.last_name }}</strong>
               </td>
               <td>
-                {% if p.dob %}
-                  <i class="bi bi-calendar3 text-muted me-1"></i>{{ p.dob }}
+                {% if p.dob_formatted %}
+                  {{ p.dob_formatted }}
                 {% else %}
                   <span class="text-muted">-</span>
                 {% endif %}
               </td>
               <td>
                 {% if p.phone %}
-                  <i class="bi bi-telephone text-muted me-1"></i>{{ p.phone }}
+                  {{ p.phone }}
                 {% else %}
                   <span class="text-muted">-</span>
                 {% endif %}
               </td>
               <td>{{ p.address if p.address else '-' }}</td>
-              <td>
-                {% if p['doctor_name'] %}
-                  <i class="bi bi-person-badge text-primary me-1"></i>Dr. {{ p['doctor_name'] }}
-                {% else %}
-                  <span class="text-muted">-</span>
-                {% endif %}
-              </td>
               <td class="text-center">
                 <div class="btn-group" role="group">
                   <a class="btn btn-sm btn-outline-primary" href="{{ url_for('admin.update_patient', pid=p.id) }}" title="Edit Patient">

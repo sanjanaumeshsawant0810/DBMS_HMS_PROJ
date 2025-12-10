@@ -176,7 +176,22 @@ def patients():
     ''').fetchall()
     doctors = conn.execute('SELECT doctor_id, f_name, l_name FROM doctors').fetchall()
     conn.close()
-    return render_template('add_patient.html', patients=patients, doctors=doctors)
+    
+    # Convert Row objects to dictionaries and format DOB to mm-dd-yyyy
+    patients_list = []
+    for p in patients:
+        patient_dict = dict(p)
+        if patient_dict.get('dob'):
+            try:
+                dob_obj = datetime.strptime(patient_dict['dob'], '%Y-%m-%d')
+                patient_dict['dob_formatted'] = dob_obj.strftime('%m-%d-%Y')
+            except:
+                patient_dict['dob_formatted'] = patient_dict['dob']
+        else:
+            patient_dict['dob_formatted'] = None
+        patients_list.append(patient_dict)
+    
+    return render_template('add_patient.html', patients=patients_list, doctors=doctors)
 
 
 @admin_bp.route('/patients/add', methods=['GET', 'POST'])
@@ -186,14 +201,15 @@ def add_patient():
     if request.method == 'POST':
         first = request.form['first_name']
         last = request.form['last_name']
+        dob = request.form.get('dob') or None
         phone = request.form['phone']
         address = request.form['address']
         doctor = request.form.get('doctor') or None
 
         conn = get_db_connection()
         conn.execute(
-            'INSERT INTO patients (first_name, last_name, phone, address, doctor) VALUES (?, ?, ?, ?, ?)',
-            (first, last, phone, address, doctor)
+            'INSERT INTO patients (first_name, last_name, dob, phone, address, doctor) VALUES (?, ?, ?, ?, ?, ?)',
+            (first, last, dob, phone, address, doctor)
         )
         conn.commit()
         conn.close()
@@ -497,6 +513,7 @@ def update_patient(pid):
     if request.method == 'POST':
         first = request.form['first_name']
         last = request.form['last_name']
+        dob = request.form.get('dob') or None
         phone = request.form['phone']
         address = request.form['address']
         # Patient-level doctor assignment: allow admin to set a primary doctor for the patient
@@ -514,8 +531,8 @@ def update_patient(pid):
                     doctor = doctor_raw
 
         conn.execute(
-            'UPDATE patients SET first_name=?, last_name=?, phone=?, address=?, doctor=? WHERE id=?',
-            (first, last, phone, address, doctor, pid)
+            'UPDATE patients SET first_name=?, last_name=?, dob=?, phone=?, address=?, doctor=? WHERE id=?',
+            (first, last, dob, phone, address, doctor, pid)
         )
         conn.commit()
         # resolve doctor name for flash
@@ -670,6 +687,10 @@ def confirm_appointment(aid):
     date = request.form.get('date')
     time = request.form.get('time')
     actions = request.form.get('actions')
+    status = (request.form.get('status') or 'confirmed').strip()
+    allowed_status = {'booked', 'confirmed', 'cancelled', 'completed'}
+    if status not in allowed_status:
+        status = 'confirmed'
 
     # if edit_dt is present, combine date/time
     appt_dt = None
@@ -679,26 +700,34 @@ def confirm_appointment(aid):
             appt_dt = f"{date} {time}"
 
     # debug log to help trace why doctor_id may not be set
-    print(f"[admin.confirm_appointment] aid={aid} doctor_id={doctor_id!r} edit_dt={edit_dt!r} date={date!r} time={time!r} actions={actions!r}")
-    # require a doctor selection on the server side as well
-    if doctor_id is None:
-        flash('Please select a doctor before confirming.', 'danger')
+    print(f"[admin.confirm_appointment] aid={aid} doctor_id={doctor_id!r} status={status!r} edit_dt={edit_dt!r} date={date!r} time={time!r} actions={actions!r}")
+    # require a doctor selection unless cancelling
+    if doctor_id is None and status != 'cancelled':
+        flash('Please select a doctor before confirming or completing.', 'danger')
         return redirect(url_for('admin.appointments'))
 
     conn = get_db_connection()
     # build update fields dynamically
     if appt_dt is not None:
-        conn.execute('UPDATE appointments SET doctor_id = ?, status = ?, appointment_datetime = ?, actions = ? WHERE id = ?', (doctor_id, 'confirmed', appt_dt, actions, aid))
+        conn.execute('UPDATE appointments SET doctor_id = ?, status = ?, appointment_datetime = ?, actions = ? WHERE id = ?', (doctor_id, status, appt_dt, actions, aid))
     else:
-        conn.execute('UPDATE appointments SET doctor_id = ?, status = ?, actions = ? WHERE id = ?', (doctor_id, 'confirmed', actions, aid))
+        conn.execute('UPDATE appointments SET doctor_id = ?, status = ?, actions = ? WHERE id = ?', (doctor_id, status, actions, aid))
 
     conn.commit()
     # verify update: fetch appointment row and confirm doctor_id
     row = conn.execute('SELECT id, doctor_id, status, appointment_datetime, actions FROM appointments WHERE id = ?', (aid,)).fetchone()
     conn.close()
     print(f"[admin.confirm_appointment] post-update row={row}")
-    if not row or (row['doctor_id'] is None):
-        flash('Failed to assign doctor to appointment — please check logs.', 'danger')
+    if not row:
+        flash('Failed to update appointment — please check logs.', 'danger')
+    elif row['status'] == 'cancelled':
+        flash('Appointment cancelled.', 'info')
+    elif row['doctor_id'] is None:
+        flash('Appointment updated but no doctor assigned.', 'warning')
+    elif row['status'] == 'completed':
+        flash('Appointment marked completed and assigned to doctor.', 'success')
+    elif row['status'] == 'confirmed':
+        flash('Appointment confirmed and assigned to doctor.', 'success')
     else:
-        flash('Appointment confirmed and assigned to doctor', 'success')
+        flash('Appointment updated.', 'success')
     return redirect(url_for('admin.appointments'))

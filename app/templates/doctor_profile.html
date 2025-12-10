@@ -23,9 +23,9 @@
                 <tr>
                     <th>ID</th>
                     <th>Patient ID</th>
-                    <th>Description</th>
-                    <th>Start Date</th>
-                    <th>End Date</th>
+                    <th>Patient Name</th>
+                    <th>Appointment Date</th>
+                    <th>Treatment Details</th>
                 </tr>
             </thead>
             <tbody>
@@ -33,9 +33,9 @@
                 <tr>
                     <td>{{ t['id'] }}</td>
                     <td>{{ t['patient_id'] }}</td>
-                    <td>{{ t['description'] }}</td>
-                    <td>{{ t['start_date'] }}</td>
-                    <td>{{ t['end_date'] }}</td>
+                    <td>{{ t['patient_name'] if t['patient_name'] else '-' }}</td>
+                    <td>{{ t['appointment_datetime'] if t['appointment_datetime'] else '-' }}</td>
+                    <td>{{ t['treatment_details'] if t['treatment_details'] else '-' }}</td>
                 </tr>
                 {% endfor %}
             </tbody>

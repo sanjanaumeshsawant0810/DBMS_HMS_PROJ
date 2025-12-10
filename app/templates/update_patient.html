@@ -7,7 +7,7 @@
         <div class="card mb-4">
             <div class="card-body">
                 <h3 class="card-title">Update Patient</h3>
-                <form method="POST" class="row g-3">
+                <form method="POST" class="row g-3" id="updateForm">
                     <div class="col-md-6">
                         <label class="form-label">First Name</label>
                         <input type="text" name="first_name" value="{{ patient['first_name'] }}" required class="form-control">
@@ -18,11 +18,12 @@
                     </div>
                     <div class="col-md-6">
                         <label class="form-label">Date of Birth</label>
-                        <input type="date" name="dob" value="{{ patient['dob'] or '' }}" class="form-control" min="1900-01-01" max="2025-12-07" required>
+                        <input type="date" id="dob" name="dob" class="form-control" min="1900-01-01" max="2025-12-07" required>
+                        <small class="text-muted" id="dobDisplay"></small>
                     </div>
                     <div class="col-md-6">
                         <label class="form-label">Phone</label>
-                        <input type="tel" name="phone" value="{{ patient['phone'] }}" class="form-control" pattern="[0-9]{10}" placeholder="10-digit phone number">
+                        <input type="tel" name="phone" value="{{ patient['phone'] }}" class="form-control" pattern="[0-9]{10}" placeholder="10-digit phone number" required>
                     </div>
                     <div class="col-md-6">
                         <label class="form-label">Address</label>
@@ -104,4 +105,33 @@
         {% endif %}
     </div>
 </div>
+
+<script>
+  // Format DOB display
+  function formatDOB() {
+    const dobInput = document.getElementById('dob');
+    const dobDisplay = document.getElementById('dobDisplay');
+    const dobValue = dobInput.value;
+    
+    if (dobValue) {
+      const [year, month, day] = dobValue.split('-');
+      dobDisplay.textContent = `${month}-${day}-${year}`;
+    } else {
+      dobDisplay.textContent = '';
+    }
+  }
+  
+  // Set initial DOB value and display
+  window.addEventListener('load', function() {
+    const dobInput = document.getElementById('dob');
+    const dobValue = '{{ patient["dob"] or "" }}';
+    if (dobValue) {
+      dobInput.value = dobValue;
+      formatDOB();
+    }
+  });
+  
+  // Update display when user changes the date
+  document.getElementById('dob').addEventListener('change', formatDOB);
+</script>
 {% endblock %}

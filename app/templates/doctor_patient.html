@@ -10,6 +10,30 @@
       <div class="card-body">
         <h4 class="card-title">Patient: {{ patient['first_name'] }} {{ patient['last_name'] }} <small class="text-muted">(ID: {{ patient['id'] }})</small></h4>
 
+        {% if appointments %}
+        <div class="mb-4">
+          <h5 class="mt-3">Reason for Visit</h5>
+          <div class="table-responsive">
+            <table class="table table-bordered">
+              <thead class="table-light">
+                <tr>
+                  <th>Appointment Date & Time</th>
+                  <th>Reason for Booking / Notes</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for appt in appointments %}
+                <tr>
+                  <td>{{ appt['appointment_datetime'] }}</td>
+                  <td>{{ appt['notes'] if appt['notes'] else '-' }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        {% endif %}
+
         <h5 class="mt-3">Treatment & Prescription Records</h5>
         {% if treatments %}
         <div class="table-responsive">

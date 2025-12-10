@@ -108,13 +108,22 @@
                         <form method="post" action="{{ url_for('admin.confirm_appointment', aid=r['id']) }}" class="row g-3">
                           <div class="col-md-3">
                             <label class="form-label small fw-bold">Assign Doctor</label>
-                            <select name="doctor" class="form-select form-select-sm" required>
+                            <select name="doctor" class="form-select form-select-sm">
                               <option value="">-- Select Doctor --</option>
                               {% for d in doctors %}
                                 <option value="{{ d['doctor_id'] }}" {% if d['doctor_id']|string == (r['doctor_id']|default(''))|string %}selected{% endif %}>
                                   Dr. {{ d['f_name'] }} {{ d['l_name'] }}
                                 </option>
                               {% endfor %}
+                            </select>
+                          </div>
+                          <div class="col-md-2">
+                            <label class="form-label small fw-bold">Status</label>
+                            <select name="status" class="form-select form-select-sm">
+                              <option value="confirmed" {% if r['status']=='confirmed' %}selected{% endif %}>Confirmed</option>
+                              <option value="completed" {% if r['status']=='completed' %}selected{% endif %}>Completed</option>
+                              <option value="cancelled" {% if r['status']=='cancelled' %}selected{% endif %}>Cancelled</option>
+                              <option value="booked" {% if r['status']=='booked' %}selected{% endif %}>Pending</option>
                             </select>
                           </div>
                           <div class="col-md-2">

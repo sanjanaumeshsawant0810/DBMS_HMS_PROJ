@@ -205,7 +205,19 @@ def list_doctors():
 def doctor_profile(did):
     conn = get_conn()
     doc = conn.execute('SELECT * FROM doctors WHERE doctor_id = ?', (did,)).fetchone()
-    treatments = conn.execute('SELECT * FROM treatments WHERE doctor_id = ? ORDER BY start_date DESC', (did,)).fetchall()
+    treatments = conn.execute('''
+        SELECT COALESCE(t.id, 0) as id, 
+               a.patient_id, 
+               p.first_name || ' ' || p.last_name as patient_name,
+               a.appointment_datetime,
+               COALESCE(t.description, '-') as treatment_details
+        FROM appointments a
+        LEFT JOIN patients p ON p.id = a.patient_id
+        LEFT JOIN treatments t ON t.patient_id = a.patient_id AND t.doctor_id = a.doctor_id
+        WHERE a.doctor_id = ? AND a.status IN ('confirmed', 'completed')
+        ORDER BY a.appointment_datetime DESC
+    ''', (did,)).fetchall()
+    
     conn.close()
     return render_template('doctor_profile.html', doctor=doc, treatments=treatments)
 
@@ -389,5 +401,14 @@ def view_patient(pid):
         GROUP BY p.id
         ORDER BY p.created_at DESC
     ''', (pid,)).fetchall()
+    
+    # Fetch appointment notes (reason for booking) for this patient and doctor
+    appointments = conn.execute('''
+        SELECT appointment_datetime, notes, status
+        FROM appointments
+        WHERE patient_id = ? AND doctor_id = ?
+        ORDER BY appointment_datetime DESC
+    ''', (pid, did)).fetchall()
+    
     conn.close()
-    return render_template('doctor_patient.html', patient=patient, treatments=treatments, prescriptions=prescriptions)
+    return render_template('doctor_patient.html', patient=patient, treatments=treatments, prescriptions=prescriptions, appointments=appointments)

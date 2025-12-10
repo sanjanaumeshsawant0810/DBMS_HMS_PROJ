@@ -12,8 +12,11 @@
     <div class="card">
       <div class="card-body">
         {% if patients %}
+        <div class="mb-4">
+          <input type="text" id="searchBox" class="form-control" placeholder="Search by name, ID, or phone...">
+        </div>
         <div class="table-responsive">
-          <table class="table table-hover align-middle">
+          <table class="table table-hover align-middle" id="patientsTable">
             <thead class="table-light">
               <tr><th>ID</th><th>Name</th><th>DOB</th><th>Phone</th><th>Actions</th></tr>
             </thead>
@@ -38,3 +41,23 @@
   </div>
 </div>
 {% endblock %}
+
+<script>
+document.getElementById('searchBox').addEventListener('keyup', function() {
+  const searchValue = this.value.toLowerCase();
+  const tableRows = document.querySelectorAll('#patientsTable tbody tr');
+  
+  tableRows.forEach(row => {
+    const cells = row.querySelectorAll('td');
+    const id = cells[0].textContent.toLowerCase();
+    const name = cells[1].textContent.toLowerCase();
+    const phone = cells[3].textContent.toLowerCase();
+    
+    if (id.includes(searchValue) || name.includes(searchValue) || phone.includes(searchValue)) {
+      row.style.display = '';
+    } else {
+      row.style.display = 'none';
+    }
+  });
+});
+</script>
