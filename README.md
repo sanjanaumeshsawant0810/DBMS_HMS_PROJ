@@ -210,7 +210,7 @@ Internal project - All rights reserved.
 
 ## 👥 Contributors
 
-- Admin Backend: Hospital Management Team
-- UI/Frontend: Design & Development Team
-- Database Design: Data Architecture Team
-
+- Anshu Goli 
+- Gireeshee Pendela
+- Sanjana Umesh Sawant
+- Veera Jeeshitha Kolla
